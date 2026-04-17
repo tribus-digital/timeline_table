@@ -1,0 +1,46 @@
+name: timeline_table
+description: Reusable, virtualised Flutter timeline table widgets and models.
+version: 0.1.0
+
+homepage: https://github.com/tribus-digital/timeline_table
+repository: https://github.com/tribus-digital/timeline_table
+issue_tracker: https://github.com/tribus-digital/timeline_table/issues
+topics:
+  - flutter
+  - timeline
+  - scheduler
+  - table
+
+# This package supports all platforms listed below.
+platforms:
+  android:
+  ios:
+  linux:
+  macos:
+  web:
+  windows:
+
+screenshots:
+  - description: "Transit operations demo showing grouped route schedules and default event rendering."
+    path: screenshots/transit-operations.jpg
+  - description: "Product roadmap demo showing custom headers and styled milestone cells."
+    path: screenshots/product-roadmap.jpg
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  collection: ^1.19.0
+  equatable: ^2.0.5
+  intl: ^0.20.2
+  two_dimensional_scrollables: ^0.4.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
