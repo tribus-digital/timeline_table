@@ -2,6 +2,15 @@
 
 All notable changes to `timeline_table` will be documented in this file.
 
+
+## 0.2.0
+Maintenance release
+
+### Updated dependencies
+
+- `two_dimensional_scrollables` 0.4.2 -> 0.5.3
+
+
 ## 0.1.0
 
 Initial standalone package release.
