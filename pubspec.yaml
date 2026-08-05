@@ -1,6 +1,6 @@
 name: timeline_table
 description: Reusable, virtualised Flutter timeline table widgets and models.
-version: 0.3.1
+version: 0.3.2
 
 homepage: https://github.com/tribus-digital/timeline_table
 repository: https://github.com/tribus-digital/timeline_table
@@ -32,9 +32,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  collection: ^1.19.0
-  equatable: ^2.0.5
-  intl: ^0.20.2
+  collection: ^1.19.1
+  equatable: ^2.1.0
+  intl: ^0.20.3
   two_dimensional_scrollables: ^0.5.3
 
 dev_dependencies:

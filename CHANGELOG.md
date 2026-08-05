@@ -3,6 +3,15 @@
 All notable changes to `timeline_table` will be documented in this file.
 
 
+## 0.3.2
+
+### Updated dependencies
+
+- `collection` ^1.19.0 -> ^1.19.1
+- `equatable` ^2.0.5 -> ^2.1.0
+- `intl` ^0.20.2 -> ^0.20.3
+
+
 ## 0.3.1
 
 ### Changed
