@@ -3,6 +3,15 @@
 All notable changes to `timeline_table` will be documented in this file.
 
 
+## 0.3.3
+
+### Fixed
+
+- `intl` constraint reverted to `^0.20.2`. 0.3.2 raised it to `^0.20.3`, which
+  no app using `flutter_localizations` can resolve - that package pins `intl` to
+  exactly 0.20.2.
+
+
 ## 0.3.2
 
 ### Updated dependencies
