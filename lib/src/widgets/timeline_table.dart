@@ -396,7 +396,15 @@ class _TimelineTableState<TEvent extends TimelineEvent,
   late List<TRow> _rows;
   late List<TEvent> _allEvents;
   late Map<String, List<TEvent>> _sortedEventsByRowId;
-  late Map<String, ({int start, int count})> _groupInfoById;
+
+  /// Contiguous group runs by 1-based row number.
+  ///
+  /// Keyed per row rather than per `groupId` so that rows sharing a groupId
+  /// without being adjacent form separate runs. Keying by groupId meant a run
+  /// took the group's *total* row count from its *first* row, which spanned
+  /// unrelated rows in between.
+  late Map<int, _GroupRun> _groupRunByRow;
+
   late Map<String, TRow> _rowForEventId;
   late Map<String, int> _rowIndexByEventId;
 
@@ -702,7 +710,6 @@ class _TimelineTableState<TEvent extends TimelineEvent,
 
     _allEvents = <TEvent>[];
     _sortedEventsByRowId = <String, List<TEvent>>{};
-    _groupInfoById = <String, ({int start, int count})>{};
     _rowForEventId = <String, TRow>{};
     _rowIndexByEventId = <String, int>{};
 
@@ -716,13 +723,6 @@ class _TimelineTableState<TEvent extends TimelineEvent,
           .sorted((a, b) => a.startTime.compareTo(b.startTime))
           .toList(growable: false);
       _sortedEventsByRowId[row.id] = sortedEvents;
-      final groupId = row.groupId;
-      if (groupId != null) {
-        final existing = _groupInfoById[groupId];
-        _groupInfoById[groupId] = existing == null
-            ? (start: rowIndex + 1, count: 1)
-            : (start: existing.start, count: existing.count + 1);
-      }
 
       for (final event in sortedEvents) {
         _allEvents.add(event);
@@ -730,6 +730,8 @@ class _TimelineTableState<TEvent extends TimelineEvent,
         _rowIndexByEventId[event.id] = rowIndex;
       }
     }
+
+    _groupRunByRow = _buildGroupRuns();
 
     _allEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
     _recomputeLayoutUnits();
@@ -1260,22 +1262,34 @@ class _TimelineTableState<TEvent extends TimelineEvent,
         return TableViewCell(child: _defaultRowHeader(context, null));
       }
 
-      final (groupSpan, _, groupCount) = _calculateGroupMerge(vicinity, row);
-      if (groupSpan != null && groupCount != null) {
-        final groupRows =
-            _rows.getRange(rowIdx, rowIdx + groupCount).toList(growable: false);
-        final details = TimelineGroupHeaderDetails<TEvent, TRow>(
-          rows: groupRows,
-          state: _snapshot(),
-          controller: widget.controller,
-        );
-        return TableViewCell(
-          rowMergeStart: vicinity.row,
-          rowMergeSpan: groupSpan,
-          child: widget.groupHeaderBuilder != null
-              ? widget.groupHeaderBuilder!(context, details)
-              : _defaultGroupHeader(context, groupRows),
-        );
+      final run = _groupRunFor(vicinity.row);
+      if (run != null && run.count > 1) {
+        final groupRows = _groupRows(run);
+        if (groupRows.isNotEmpty) {
+          final details = TimelineGroupHeaderDetails<TEvent, TRow>(
+            rows: groupRows,
+            state: _snapshot(),
+            controller: widget.controller,
+          );
+
+          // Identical merge info for *every* vicinity in the run, as
+          // TableView requires: it builds a merged cell once, from whichever
+          // part of it is visible, so a merge start that moved with the scroll
+          // offset left the table unable to tell that the remaining rows were
+          // merged at all - it unmerged them, and headers jumped or vanished.
+          //
+          // The header fills its merged cell and scrolls with the group, so its
+          // lower edge stays on the run's last row boundary and lines up with
+          // the timeline's row gridlines. Holding the label in view while the
+          // cell moved underneath it put the two out of step.
+          return TableViewCell(
+            rowMergeStart: run.start,
+            rowMergeSpan: run.count,
+            child: widget.groupHeaderBuilder != null
+                ? widget.groupHeaderBuilder!(context, details)
+                : _defaultGroupHeader(context, groupRows),
+          );
+        }
       }
 
       final details = TimelineRowHeaderDetails<TEvent, TRow>(
@@ -1325,11 +1339,10 @@ class _TimelineTableState<TEvent extends TimelineEvent,
         .toList(growable: false);
     final event = eventsInCell.isNotEmpty ? eventsInCell.first : null;
 
-    final (_, groupStart, groupCount) = _calculateGroupMerge(vicinity, row);
-    final isInGroup = groupStart != null &&
-        groupCount != null &&
-        vicinity.row >= groupStart &&
-        vicinity.row < (groupStart + groupCount - 1);
+    // Suppress the row divider between rows of the same group, keeping it on
+    // the run's last row so the group still reads as one block.
+    final run = _groupRunFor(vicinity.row);
+    final isInGroup = run != null && run.count > 1 && vicinity.row < run.end;
     final showGrid = !isInGroup;
 
     if (event == null) {
@@ -1584,31 +1597,55 @@ class _TimelineTableState<TEvent extends TimelineEvent,
     _bottomSpacerHeight = max(needCentre, needFill);
   }
 
-  (int? span, int? start, int? count) _calculateGroupMerge(
-      TableVicinity vicinity, TRow? row) {
-    final groupId = row?.groupId;
-    if (groupId == null) {
-      return (null, null, null);
-    }
+  /// Maps every grouped row to the contiguous run it belongs to.
+  ///
+  /// A run is a maximal block of *adjacent* rows sharing the same non-null
+  /// `groupId`. Rows that share a groupId without being adjacent form separate
+  /// runs, because a merged table cell can only describe one contiguous block
+  /// of rows.
+  Map<int, _GroupRun> _buildGroupRuns() {
+    final runs = <int, _GroupRun>{};
 
-    final groupInfo = _groupInfoById[groupId];
-    if (groupInfo == null || groupInfo.count <= 1) {
-      return (null, groupInfo?.start, groupInfo?.count);
-    }
+    var index = 0;
+    while (index < _rows.length) {
+      final groupId = _rows[index].groupId;
+      if (groupId == null) {
+        index++;
+        continue;
+      }
 
-    final firstVisRow = _vController.hasClients
-        ? (_vController.offset / _style.rowHeight).floor() + 1
-        : 1;
-    final headerRow = max(groupInfo.start, firstVisRow);
-    if (vicinity.row == headerRow) {
-      return (
-        groupInfo.count - (headerRow - groupInfo.start),
-        groupInfo.start,
-        groupInfo.count
+      var end = index;
+      while (end + 1 < _rows.length && _rows[end + 1].groupId == groupId) {
+        end++;
+      }
+
+      final run = _GroupRun(
+        groupId: groupId,
+        start: index + 1, // rows are 1-based; row 0 is the pinned time header
+        count: end - index + 1,
       );
+      for (var row = run.start; row <= run.end; row++) {
+        runs[row] = run;
+      }
+
+      index = end + 1;
     }
 
-    return (null, groupInfo.start, groupInfo.count);
+    return runs;
+  }
+
+  /// The run covering 1-based [tableRow], or null if that row isn't grouped.
+  _GroupRun? _groupRunFor(int tableRow) => _groupRunByRow[tableRow];
+
+  /// The rows belonging to [run].
+  ///
+  /// Bounds are clamped so a run map that has fallen out of step with [_rows]
+  /// yields a short (possibly empty) list rather than throwing mid layout;
+  /// callers must handle empty.
+  List<TRow> _groupRows(_GroupRun run) {
+    final first = (run.start - 1).clamp(0, _rows.length);
+    final last = (first + run.count).clamp(first, _rows.length);
+    return _rows.getRange(first, last).toList(growable: false);
   }
 
   List<TEvent> _eventsForRow(TRow? row) {
@@ -1703,4 +1740,27 @@ class _TimelineTableState<TEvent extends TimelineEvent,
     }
     return null;
   }
+}
+
+/// A maximal block of adjacent rows sharing the same `groupId`.
+///
+/// [start] and [end] are 1-based table row numbers (row 0 is the pinned time
+/// header), matching `TableVicinity.row`.
+@immutable
+class _GroupRun {
+  const _GroupRun({
+    required this.groupId,
+    required this.start,
+    required this.count,
+  });
+
+  final String groupId;
+  final int start;
+  final int count;
+
+  /// Last row of the run, inclusive.
+  int get end => start + count - 1;
+
+  @override
+  String toString() => '_GroupRun($groupId, rows $start..$end)';
 }
