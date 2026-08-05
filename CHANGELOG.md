@@ -3,7 +3,7 @@
 All notable changes to `timeline_table` will be documented in this file.
 
 
-## Unreleased
+## 0.3.1
 
 ### Changed
 - `TimelineThemeData` now mixes in `Equatable` rather than the deprecated
