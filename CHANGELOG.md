@@ -3,6 +3,14 @@
 All notable changes to `timeline_table` will be documented in this file.
 
 
+## 0.3.1
+
+### Changed
+- `TimelineThemeData` now mixes in `Equatable` rather than the deprecated
+  `EquatableMixin`, which `equatable` 2.1.0 replaced with `Equatable` itself.
+  Equality and `props` behaviour are unchanged.
+
+
 ## 0.3.0
 
 Grouped row headers reworked. Groups are now contiguous runs with fixed merge
