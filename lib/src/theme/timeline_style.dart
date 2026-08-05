@@ -19,7 +19,7 @@ class TimelineTheme {
 
 /// App-wide timeline defaults stored in `ThemeData.extensions`.
 class TimelineThemeData extends ThemeExtension<TimelineThemeData>
-    with EquatableMixin {
+    with Equatable {
   final TimelineTableStyle tableStyle;
 
   const TimelineThemeData({
